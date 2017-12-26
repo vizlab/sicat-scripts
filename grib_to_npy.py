@@ -4,8 +4,15 @@ import os
 import os.path
 from argparse import ArgumentParser
 from glob import glob
+import itertools
+from multiprocessing import Pool
 import numpy as np
 import pygrib
+
+
+def outpath(filename, dest):
+    basename = os.path.basename(filename)
+    return '{}/{}.npy'.format(dest, basename)
 
 
 def to_numpy(filename):
@@ -17,10 +24,18 @@ def to_numpy(filename):
     return data
 
 
+def process(args):
+    filename, dest = args
+    data = to_numpy(filename)
+    np.save(outpath(filename, dest), data)
+
+
 def main():
     parser = ArgumentParser()
     parser.add_argument('--dest', default='dump',
                         help='destination directory')
+    parser.add_argument('--threads', default=1, type=int,
+                        help='number of parallel threads')
     parser.add_argument('files', nargs='+',
                         help='files to be processed')
     args = parser.parse_args()
@@ -28,12 +43,12 @@ def main():
     if not os.path.exists(args.dest):
         os.makedirs(args.dest)
 
-    for pattern in args.files:
-        for filename in glob(pattern):
-            basename = os.path.basename(filename)
-            print(basename)
-            data = to_numpy(filename)
-            np.save('{}/{}'.format(args.dest, basename), data)
+    filenames = [(f, args.dest) for f
+                 in itertools.chain(*[glob(p) for p in args.files])
+                 if not os.path.exists(outpath(f, args.dest))]
+
+    pool = Pool(args.threads)
+    pool.map(process, filenames)
 
 
 if __name__ == '__main__':

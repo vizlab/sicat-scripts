@@ -7,8 +7,15 @@ from argparse import ArgumentParser
 from datetime import datetime, timedelta
 import json
 import csv
+import itertools
+from multiprocessing import Pool
 from glob import glob
 import numpy as np
+
+
+def outpath(filename, dest):
+    basename = os.path.basename(filename)[:-4]
+    return '{}/{}.csv'.format(dest, basename)
 
 
 def month_hours(year, month):
@@ -19,7 +26,8 @@ def month_hours(year, month):
     yield d
 
 
-def process_file(filename, shapes, dest):
+def process(args):
+    filename, shapes, dest = args
     basename = os.path.basename(filename)[:-4]
     print(basename)
 
@@ -58,6 +66,8 @@ def main():
     parser = ArgumentParser()
     parser.add_argument('--dest', default='result',
                         help='destination directory')
+    parser.add_argument('--threads', default=1, type=int,
+                        help='number of parallel threads')
     parser.add_argument('--target', nargs=1,
                         help='target geometry file')
     parser.add_argument('files', nargs='+',
@@ -68,10 +78,12 @@ def main():
         os.makedirs(args.dest)
 
     shapes = json.load(open(args.target[0]))
+    filenames = [(f, shapes, args.dest) for f
+                 in itertools.chain(*[glob(p) for p in args.files])
+                 if not os.path.exists(outpath(f, args.dest))]
 
-    for pattern in args.files:
-        for filename in glob(pattern):
-            process_file(filename, shapes, args.dest)
+    pool = Pool(args.threads)
+    pool.map(process, filenames)
 
 
 if __name__ == '__main__':
